@@ -131,6 +131,35 @@ export function Router() {
                   
                   <button
                     onClick={() => {
+                      // Test the exact login URL being generated
+                      const apiUrl = import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com';
+                      const redirectUri = window.location.origin;
+                      const loginUrl = `${apiUrl}/api/v1/login?redirect_uri=${encodeURIComponent(redirectUri)}`;
+                      addResult(`🔗 Login URL: ${loginUrl}`);
+                      addResult(`🌐 Opening login URL in new tab to check Google login...`);
+                      window.open(loginUrl, '_blank');
+                    }}
+                    className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-medium"
+                  >
+                    🌐 Test Login URL (New Tab)
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      // Check DevTools cookies specifically
+                      addResult("🔍 Checking cookies in DevTools...");
+                      addResult("📍 Open DevTools → Application → Cookies");
+                      addResult("📍 Look for domain: auth-api.dev.controlshiftai.com");
+                      addResult("📍 Expected cookies: fa_access_token, fa_refresh_token, fa_id_token");
+                      addResult("⚠️  Note: HTTPOnly cookies won't show in document.cookie (security feature)");
+                    }}
+                    className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded font-medium"
+                  >
+                    🔍 Cookie Debug Guide
+                  </button>
+                  
+                  <button
+                    onClick={() => {
                       const apiUrl = import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com';
                       window.location.href = `${apiUrl}/api/v1/logout?redirect_uri=${encodeURIComponent(window.location.origin)}`;
                     }}

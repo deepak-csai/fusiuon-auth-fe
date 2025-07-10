@@ -2,77 +2,163 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com';
 
-// Check if we're in development with cross-domain setup
-const isDevelopmentCrossDomain = import.meta.env.DEV && 
-  (import.meta.env.VITE_API_URL?.includes('auth-api.dev.controlshiftai.com') || 
-   (!import.meta.env.VITE_API_URL && window.location.hostname === 'localhost'));
+// ✨ NEW: Token management for frontend teams
+export const TokenManager = {
+  // Get tokens from localStorage (what frontend teams want!)
+  getTokens() {
+    return {
+      accessToken: localStorage.getItem('fa_access_token'),
+      refreshToken: localStorage.getItem('fa_refresh_token'),
+      idToken: localStorage.getItem('fa_id_token')
+    };
+  },
 
-// Utility function to get cookie value
-function getCookie(name: string): string | null {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
-  return null;
-}
+  // Store tokens in localStorage
+  setTokens(tokens: { access_token: string; refresh_token: string; id_token: string }) {
+    localStorage.setItem('fa_access_token', tokens.access_token);
+    localStorage.setItem('fa_refresh_token', tokens.refresh_token);
+    localStorage.setItem('fa_id_token', tokens.id_token);
+    console.log('🔑 Tokens stored in localStorage for frontend team!');
+  },
 
-// Utility function to get access token from cookie OR localStorage
-function getAccessTokenFromCookie(): string | null {
-  if (isDevelopmentCrossDomain) {
-    // In development, try localStorage first, then cookies
-    return localStorage.getItem('fa_access_token') || getCookie('fa_access_token');
-  }
-  return getCookie('fa_access_token');
-}
-
-// Utility function to get refresh token from cookie OR localStorage
-function getRefreshTokenFromCookie(): string | null {
-  if (isDevelopmentCrossDomain) {
-    // In development, try localStorage first, then cookies
-    return localStorage.getItem('fa_refresh_token') || getCookie('fa_refresh_token');
-  }
-  return getCookie('fa_refresh_token');
-}
-
-// Utility function to set tokens in localStorage for development
-function setTokensInLocalStorage(accessToken: string, refreshToken: string) {
-  if (isDevelopmentCrossDomain) {
-    localStorage.setItem('fa_access_token', accessToken);
-    localStorage.setItem('fa_refresh_token', refreshToken);
-    console.log('🔑 Tokens stored in localStorage for development');
-  }
-}
-
-// Utility function to clear tokens from localStorage
-function clearTokensFromLocalStorage() {
-  if (isDevelopmentCrossDomain) {
+  // Clear tokens
+  clearTokens() {
     localStorage.removeItem('fa_access_token');
     localStorage.removeItem('fa_refresh_token');
+    localStorage.removeItem('fa_id_token');
     console.log('🧹 Tokens cleared from localStorage');
-  }
-}
+  },
 
-// Create axios instance with default config
+  // ✨ NEW: Check if token is expired
+  isTokenExpired(token: string): boolean {
+    try {
+      const payload = token.split('.')[1];
+      if (payload) {
+        const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+        const now = Math.floor(Date.now() / 1000);
+        return decoded.exp < now;
+      }
+    } catch (error) {
+      console.error('Failed to decode token for expiry check:', error);
+      return true; // Assume expired if can't decode
+    }
+    return true;
+  },
+
+  // ✨ NEW: Clean up expired tokens automatically
+  cleanupExpiredTokens() {
+    const tokens = this.getTokens();
+    let hasExpired = false;
+
+    // Check access token
+    if (tokens.accessToken && this.isTokenExpired(tokens.accessToken)) {
+      localStorage.removeItem('fa_access_token');
+      console.log('🧹 Expired access token removed');
+      hasExpired = true;
+    }
+
+    // Check ID token
+    if (tokens.idToken && this.isTokenExpired(tokens.idToken)) {
+      localStorage.removeItem('fa_id_token');
+      console.log('🧹 Expired ID token removed');
+      hasExpired = true;
+    }
+
+    // If any token expired, might as well clear refresh token too
+    if (hasExpired && tokens.refreshToken) {
+      localStorage.removeItem('fa_refresh_token');
+      console.log('🧹 Refresh token removed due to expired session');
+    }
+
+    return hasExpired;
+  },
+
+  // Check if user has valid (non-expired) tokens
+  hasValidTokens(): boolean {
+    this.cleanupExpiredTokens(); // Clean first
+    const tokens = this.getTokens();
+    
+    if (!tokens.accessToken) return false;
+    
+    // Double-check it's not expired
+    return !this.isTokenExpired(tokens.accessToken);
+  },
+
+  // Get user info from ID token (JWT decode)
+  getUserInfoFromToken(): Record<string, unknown> | null {
+    this.cleanupExpiredTokens(); // Clean first
+    const { idToken } = this.getTokens();
+    if (idToken) {
+      try {
+        // Decode JWT payload
+        const payload = idToken.split('.')[1];
+        if (payload) {
+          const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+          return JSON.parse(decoded);
+        }
+      } catch (error) {
+        console.error('Failed to decode ID token:', error);
+      }
+    }
+    return null;
+  },
+
+  // Get access token for API calls (what frontend teams need!)
+  getAccessToken(): string | null {
+    this.cleanupExpiredTokens(); // Clean first
+    return this.getTokens().accessToken;
+  },
+
+  // ✨ MAIN FUNCTION: Exchange cookies for localStorage tokens
+  async exchangeCookiesForTokens(): Promise<boolean> {
+    try {
+      console.log('🔄 Exchanging cookies for localStorage tokens...');
+      
+      const response = await fetch(`${API_URL}/api/v1/tokens`, {
+        credentials: 'include', // Send cookies to backend
+      });
+
+      if (response.ok) {
+        const tokens = await response.json();
+        this.setTokens(tokens);
+        console.log('✅ Tokens successfully stored in localStorage!');
+        return true;
+      } else {
+        console.log('❌ Failed to get tokens - user not authenticated');
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Token exchange failed:', error);
+      return false;
+    }
+  },
+
+  // ✨ NEW: Set up automatic cleanup interval
+  startCleanupInterval() {
+    // Check for expired tokens every 5 minutes
+    setInterval(() => {
+      this.cleanupExpiredTokens();
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    console.log('🕒 Token cleanup interval started (every 5 minutes)');
+  }
+};
+
+// Create axios instance with automatic token headers
 const api = axios.create({
   baseURL: API_URL,
-  withCredentials: true, // Important: Send cookies with requests
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add request interceptor to automatically add Authorization header when token is available
+// Add token to requests automatically
 api.interceptors.request.use((config) => {
-  // For token-based endpoints, add Authorization header
-  const tokenBasedEndpoints = ['/api/v1/user', '/api/v1/validate', '/api/v1/tokens', '/api/v1/refresh'];
-  const isTokenBasedEndpoint = tokenBasedEndpoints.some(endpoint => config.url?.includes(endpoint));
-  
-  if (isTokenBasedEndpoint) {
-    const token = getAccessTokenFromCookie();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  const token = TokenManager.getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-  
   return config;
 });
 
@@ -82,71 +168,22 @@ export interface User {
   email: string;
   firstName?: string;
   lastName?: string;
-  fullName?: string;
-  username?: string;
+  name?: string;
+  picture?: string;
   roles?: string[];
-  registrations?: any[];
-  verified?: boolean;
-  active?: boolean;
-  insertInstant?: number;
-  lastLoginInstant?: number;
-  lastUpdateInstant?: number;
-  passwordChangeRequired?: boolean;
-  passwordLastUpdateInstant?: number;
-  tenantId?: string;
-  usernameStatus?: string;
-  twoFactorEnabled?: boolean;
-  connectorId?: string;
-  encryptionScheme?: string;
-  factor?: number;
-  salt?: string;
-  memberships?: any[];
-  imageUrl?: string;
-  data?: Record<string, any>;
-  preferredLanguages?: string[];
-  timezone?: string;
-  locale?: string;
-  birthDate?: string;
-  cleanSpeakId?: string;
-  mobilePhone?: string;
-  parentalConsentType?: string;
-  parentEmail?: string;
-  uniqueUsername?: string;
+  email_verified?: boolean;
 }
 
-export interface AuthResponse {
-  message: string;
-  login_url?: string;
-  state?: string;
-}
-
-export interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
-  scope?: string;
-}
-
-export interface ApiError {
-  detail: string;
-  status_code: number;
-  error_code?: string;
-  timestamp?: string;
-  path?: string;
-}
-
-// Auth Service Class
+// ✨ UPDATED: Auth Service for frontend teams
 export class AuthService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    this.baseURL = API_URL;
   }
 
   /**
-   * ✨ SIMPLIFIED LOGIN - Just redirect to backend
-   * No token management needed!
+   * ✨ LOGIN: Redirect to backend login
    */
   login(redirectUri?: string): void {
     const redirect = redirectUri || window.location.origin;
@@ -154,73 +191,130 @@ export class AuthService {
   }
 
   /**
-   * ✨ CHECK AUTH STATUS - Using cookies automatically
-   * No headers needed!
-   */
-  async checkAuth(): Promise<User | null> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/v1/me`, {
-        credentials: 'include', // Important: sends cookies
-      });
-
-      if (response.ok) {
-        const user = await response.json();
-        return user;
-      }
-      return null;
-    } catch (error) {
-      console.log('Not authenticated');
-      return null;
-    }
-  }
-
-  /**
-   * ✨ SIMPLIFIED LOGOUT - Just redirect to backend
+   * ✨ LOGOUT: Clear tokens and redirect
    */
   logout(redirectUri?: string): void {
+    TokenManager.clearTokens();
     const redirect = redirectUri || window.location.origin;
     window.location.href = `${this.baseURL}/api/v1/logout?redirect_uri=${encodeURIComponent(redirect)}`;
   }
 
   /**
-   * 🧪 TEST: Get user info (same as checkAuth, but different endpoint)
-   * This uses the same cookie-based authentication
+   * ✨ CHECK AUTH: Try cookies first, then localStorage
    */
-  async getUserInfo(): Promise<User | null> {
+  async checkAuth(): Promise<User | null> {
+    // First try localStorage tokens
+    if (TokenManager.hasValidTokens()) {
+      const userInfo = TokenManager.getUserInfoFromToken();
+      if (userInfo) {
+        return {
+          id: userInfo.sub as string,
+          email: userInfo.email as string,
+          name: userInfo.name as string,
+          firstName: userInfo.given_name as string,
+          lastName: userInfo.family_name as string,
+          picture: userInfo.picture as string,
+          email_verified: userInfo.email_verified as boolean,
+          roles: userInfo.roles as string[] || []
+        };
+      }
+    }
+
+    // Try to exchange cookies for tokens
+    const exchangeSuccess = await TokenManager.exchangeCookiesForTokens();
+    if (exchangeSuccess) {
+      // Recursively call checkAuth now that we have tokens
+      return this.checkAuth();
+    }
+
+    // Try direct API call as fallback
     try {
       const response = await fetch(`${this.baseURL}/api/v1/me`, {
         credentials: 'include',
       });
 
       if (response.ok) {
-        return await response.json();
+        const user = await response.json();
+        return user;
       }
-      return null;
     } catch (error) {
-      console.error('Failed to get user info:', error);
-      return null;
+      console.log('Auth check failed:', error);
     }
+
+    return null;
   }
 
   /**
-   * 🔧 OPTIONAL: Get OAuth URL for manual handling
-   * (Most apps won't need this - use login() instead)
+   * ✨ INITIALIZE: Call this after login redirect
    */
-  async getOAuthUrl(redirectUri?: string): Promise<string> {
-    const redirect = redirectUri || window.location.origin;
-    const response = await fetch(
-      `${this.baseURL}/api/v1/oauth-url?redirect_uri=${encodeURIComponent(redirect)}`
-    );
-    const data = await response.json();
-    return data.oauth_url;
+  async initializeTokens(): Promise<boolean> {
+    return await TokenManager.exchangeCookiesForTokens();
   }
 
-  // Remove all the old localStorage token methods - not needed anymore!
-  // No more: storeTokens, getStoredTokens, clearTokens, etc.
+  /**
+   * ✨ API CALL: Make authenticated requests
+   */
+  async apiCall(url: string, options: RequestInit = {}): Promise<Response> {
+    const token = TokenManager.getAccessToken();
+    if (!token) {
+      throw new Error('No access token available');
+    }
+
+    return fetch(url, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+    });
+  }
 }
 
 // Export singleton instance
 export const authService = new AuthService();
 
-// Export utility functions
-export { getAccessTokenFromCookie, getRefreshTokenFromCookie, getCookie }; 
+// ✨ SIMPLE HELPER for frontend teams
+export const FrontendAuth = {
+  // Check if logged in (with expiry check)
+  isLoggedIn: () => TokenManager.hasValidTokens(),
+  
+  // Get access token (with expiry check)
+  getAccessToken: () => TokenManager.getAccessToken(),
+  
+  // Get all tokens (with cleanup)
+  getTokens: () => {
+    TokenManager.cleanupExpiredTokens();
+    return TokenManager.getTokens();
+  },
+  
+  // Get user info (with expiry check)
+  getUserInfo: () => TokenManager.getUserInfoFromToken(),
+  
+  // Login
+  login: () => authService.login(),
+  
+  // Logout with cleanup
+  logout: () => {
+    TokenManager.clearTokens();
+    authService.logout();
+  },
+  
+  // Initialize tokens after login
+  initialize: () => authService.initializeTokens(),
+
+  // ✨ NEW: Check if tokens are expired
+  areTokensExpired: () => {
+    const tokens = TokenManager.getTokens();
+    if (!tokens.accessToken) return true;
+    return TokenManager.isTokenExpired(tokens.accessToken);
+  },
+
+  // ✨ NEW: Manual cleanup
+  cleanupExpired: () => TokenManager.cleanupExpiredTokens(),
+
+  // ✨ NEW: Start automatic cleanup (call once on app startup)
+  startAutoCleanup: () => TokenManager.startCleanupInterval()
+};
+
+ 

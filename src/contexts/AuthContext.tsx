@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
-import { AuthService } from '../services/api';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { authService, TokenManager } from '../services/api';
 import type { User } from '../services/api';
 
 interface AuthContextType {
@@ -10,26 +9,34 @@ interface AuthContextType {
   login: (redirectUri?: string) => void;
   logout: (redirectUri?: string) => void;
   refreshUser: () => Promise<void>;
+  // ✨ NEW: Token access for frontend teams
+  getAccessToken: () => string | null;
+  getTokens: () => { accessToken: string | null; refreshToken: string | null; idToken: string | null };
+  getUserInfoFromToken: () => Record<string, unknown> | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const authService = new AuthService();
-
 interface AuthProviderProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ✨ SIMPLIFIED: Check auth status using cookies
+  // ✨ Check auth status using both cookies and localStorage
   const checkAuth = async () => {
     setIsLoading(true);
     try {
+      // Try to get tokens first (this will exchange cookies if needed)
       const userData = await authService.checkAuth();
       setUser(userData);
+      
+      if (userData) {
+        console.log('✅ User authenticated via tokens:', userData);
+        console.log('🔑 Access token available:', !!TokenManager.getAccessToken());
+      }
     } catch (error) {
       console.log('Auth check failed:', error);
       setUser(null);
@@ -38,14 +45,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // ✨ SIMPLIFIED: Login just redirects - no token management!
+  // ✨ Login with automatic token initialization
   const login = (redirectUri?: string) => {
     authService.login(redirectUri);
   };
 
-  // ✨ SIMPLIFIED: Logout just redirects - backend handles everything!
+  // ✨ Logout with token cleanup
   const logout = (redirectUri?: string) => {
     authService.logout(redirectUri);
+    setUser(null);
   };
 
   // Refresh user data
@@ -53,12 +61,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     await checkAuth();
   };
 
-  // Check auth on mount
+  // ✨ Token access methods for frontend teams
+  const getAccessToken = () => TokenManager.getAccessToken();
+  const getTokens = () => TokenManager.getTokens();
+  const getUserInfoFromToken = () => TokenManager.getUserInfoFromToken();
+
+  // Check auth on mount and after URL changes (for login redirects)
   useEffect(() => {
     checkAuth();
+    
+    // Listen for URL changes (after login redirect)
+    const handleUrlChange = () => {
+      // Small delay to allow cookie setting
+      setTimeout(checkAuth, 500);
+    };
+    
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
   }, []);
 
-  // ✨ MUCH SIMPLER: No complex token logic!
+  // ✨ Initialize tokens after page loads (for login redirect handling)
+  useEffect(() => {
+    const initializeAfterLogin = async () => {
+      // Check if we just returned from login
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasLoginParam = urlParams.has('code') || urlParams.has('state');
+      
+      if (hasLoginParam || (!user && !TokenManager.hasValidTokens())) {
+        console.log('🔄 Initializing tokens after login redirect...');
+        const success = await authService.initializeTokens();
+        if (success) {
+          console.log('✅ Tokens initialized successfully!');
+          await checkAuth();
+        }
+      }
+    };
+
+    // Only run this after initial auth check
+    if (!isLoading) {
+      initializeAfterLogin();
+    }
+  }, [isLoading, user]);
+
   const value: AuthContextType = {
     user,
     isLoading,
@@ -66,6 +110,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login,
     logout,
     refreshUser,
+    // ✨ NEW: Token methods for frontend teams
+    getAccessToken,
+    getTokens,
+    getUserInfoFromToken,
   };
 
   return (
@@ -75,10 +123,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   );
 };
 
-export const useAuth = (): AuthContextType => {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}; 
+};
+
+// Note: FrontendAuth and TokenManager are available from '../services/api' 

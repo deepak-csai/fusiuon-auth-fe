@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { TokenTest } from './TokenTest';
 
 interface DebugInfo {
   allCookies: string;
@@ -115,12 +116,15 @@ export function Dashboard() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">
-            Dashboard - Debug Mode
+            Dashboard - Token Testing 🔑
           </h1>
           <p className="mt-2 text-lg text-gray-600">
-            Hello {user?.firstName || user?.email?.split('@')[0] || 'User'}! Let's debug the cookie/auth issue.
+            Hello {user?.firstName || user?.email?.split('@')[0] || 'User'}! Test token access for your frontend team.
           </p>
         </div>
+
+        {/* ✨ NEW: Token Test Component */}
+        <TokenTest />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
@@ -148,7 +152,7 @@ export function Dashboard() {
             {/* Debug Testing */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                🧪 Debug Authentication
+                🧪 Legacy Debug (Cookies)
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -200,65 +204,27 @@ export function Dashboard() {
                 </div>
               )}
             </div>
-
-            {/* Instructions */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                📋 What We're Testing
-              </h3>
-              <div className="space-y-3 text-sm">
-                <div className="bg-yellow-50 p-3 rounded">
-                  <p className="font-medium text-yellow-800">🍪 Cookie Debug:</p>
-                  <p className="text-yellow-700">Check if React app can see cookies from auth-api.dev.controlshiftai.com</p>
-                </div>
-                <div className="bg-blue-50 p-3 rounded">
-                  <p className="font-medium text-blue-800">📡 /me Test:</p>
-                  <p className="text-blue-700">Test fetch to /me with credentials: 'include' (should send cookies)</p>
-                </div>
-                <div className="bg-purple-50 p-3 rounded">
-                  <p className="font-medium text-purple-800">🔗 Direct API:</p>
-                  <p className="text-purple-700">Direct call to confirm cookies work cross-domain</p>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Expected Cookies */}
+            {/* Instructions */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                🍪 Expected Cookies
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="bg-green-50 p-2 rounded">
-                  <p className="font-medium text-green-800">fa_access_token</p>
-                  <p className="text-green-600">Domain: auth-api.dev.controlshiftai.com</p>
-                </div>
-                <div className="bg-green-50 p-2 rounded">
-                  <p className="font-medium text-green-800">fa_refresh_token</p>
-                  <p className="text-green-600">Domain: auth-api.dev.controlshiftai.com</p>
-                </div>
-                <div className="bg-green-50 p-2 rounded">
-                  <p className="font-medium text-green-800">fa_id_token</p>
-                  <p className="text-green-600">Domain: auth-api.dev.controlshiftai.com</p>
-                </div>
-              </div>
-            </div>
-
-            {/* The Issue */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                🚨 The Issue
+                📋 Token Access Guide
               </h3>
               <div className="space-y-3 text-sm">
-                <div className="bg-red-50 p-3 rounded">
-                  <p className="font-medium text-red-800">Cross-Domain Problem:</p>
-                  <p className="text-red-700">React app (localhost:5173) can't read cookies from auth-api.dev.controlshiftai.com</p>
+                <div className="bg-green-50 p-3 rounded">
+                  <p className="font-medium text-green-800">✅ NEW Way (localStorage):</p>
+                  <p className="text-green-700">Use FrontendAuth.getAccessToken() to get tokens from localStorage</p>
                 </div>
                 <div className="bg-blue-50 p-3 rounded">
-                  <p className="font-medium text-blue-800">But fetch() should work:</p>
-                  <p className="text-blue-700">credentials: 'include' should send cookies with API calls</p>
+                  <p className="font-medium text-blue-800">🔄 Auto Token Exchange:</p>
+                  <p className="text-blue-700">Cookies automatically exchanged for localStorage tokens</p>
+                </div>
+                <div className="bg-purple-50 p-3 rounded">
+                  <p className="font-medium text-purple-800">🎯 For Your Team:</p>
+                  <p className="text-purple-700">Simple token access without cross-domain issues</p>
                 </div>
               </div>
             </div>
