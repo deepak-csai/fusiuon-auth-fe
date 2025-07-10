@@ -138,175 +138,85 @@ export interface ApiError {
 
 // Auth Service Class
 export class AuthService {
-  // Cookie-based authentication (cookies sent automatically)
-  
-  /**
-   * Start login process - redirects to FusionAuth
-   * Uses cookie-based auth
-   */
-  async startLogin(redirectUri?: string): Promise<AuthResponse> {
-    const params = new URLSearchParams();
-    if (redirectUri) {
-      params.append('redirect_uri', redirectUri);
-    }
-    
-    const url = `/api/v1/login${params.toString() ? `?${params.toString()}` : ''}`;
-    const response = await api.get<AuthResponse>(url);
-    return response.data;
+  private baseURL: string;
+
+  constructor() {
+    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   }
 
   /**
-   * Get current user information
-   * Uses cookie-based auth (cookies sent automatically)
+   * ✨ SIMPLIFIED LOGIN - Just redirect to backend
+   * No token management needed!
    */
-  async getCurrentUser(): Promise<User> {
-    const response = await api.get<User>('/api/v1/me');
-    return response.data;
+  login(redirectUri?: string): void {
+    const redirect = redirectUri || window.location.origin;
+    window.location.href = `${this.baseURL}/api/v1/login?redirect_uri=${encodeURIComponent(redirect)}`;
   }
 
   /**
-   * Logout user
-   * Uses cookie-based auth
+   * ✨ CHECK AUTH STATUS - Using cookies automatically
+   * No headers needed!
    */
-  async logout(redirectUri?: string): Promise<{ message: string }> {
-    const params = new URLSearchParams();
-    if (redirectUri) {
-      params.append('redirect_uri', redirectUri);
-    }
-    
-    const url = `/api/v1/logout${params.toString() ? `?${params.toString()}` : ''}`;
-    const response = await api.post(url);
-    return response.data;
-  }
-
-  /**
-   * Complete logout (clears all sessions)
-   * Uses cookie-based auth
-   */
-  async completeLogout(redirectUri?: string): Promise<{ message: string }> {
-    const params = new URLSearchParams();
-    if (redirectUri) {
-      params.append('redirect_uri', redirectUri);
-    }
-    
-    const url = `/api/v1/auth/logout${params.toString() ? `?${params.toString()}` : ''}`;
-    const response = await api.post(url);
-    return response.data;
-  }
-
-  // Token-based authentication (Authorization header required)
-  
-  /**
-   * Get user information using token
-   * Uses token-based auth (Authorization header added automatically)
-   */
-  async getUserWithToken(token?: string): Promise<User> {
-    const config = token ? {
-      headers: { Authorization: `Bearer ${token}` }
-    } : {};
-    
-    const response = await api.get<User>('/api/v1/user', config);
-    return response.data;
-  }
-
-  /**
-   * Get access and refresh tokens
-   * Uses token-based auth (Authorization header added automatically)
-   */
-  async getTokens(): Promise<TokenResponse> {
-    const response = await api.get<TokenResponse>('/api/v1/tokens');
-    return response.data;
-  }
-
-  /**
-   * Validate token
-   * Uses token-based auth (Authorization header added automatically)
-   */
-  async validateToken(token?: string): Promise<{ valid: boolean; user?: User }> {
-    const config = token ? {
-      headers: { Authorization: `Bearer ${token}` }
-    } : {};
-    
-    const response = await api.get('/api/v1/validate', config);
-    return response.data;
-  }
-
-  /**
-   * Refresh access token
-   * Uses token-based auth (Authorization header added automatically)
-   */
-  async refreshToken(): Promise<TokenResponse> {
-    const response = await api.post<TokenResponse>('/api/v1/refresh');
-    return response.data;
-  }
-
-  // Utility methods
-  
-  /**
-   * Check if user is authenticated (has valid cookies)
-   */
-  isAuthenticated(): boolean {
-    const accessToken = getAccessTokenFromCookie();
-    const refreshToken = getRefreshTokenFromCookie();
-    return !!(accessToken && refreshToken);
-  }
-
-  /**
-   * Get access token from cookie
-   */
-  getAccessToken(): string | null {
-    return getAccessTokenFromCookie();
-  }
-
-  /**
-   * Get refresh token from cookie
-   */
-  getRefreshToken(): string | null {
-    return getRefreshTokenFromCookie();
-  }
-
-  /**
-   * Clear local authentication state (for debugging)
-   */
-  clearLocalAuth(): void {
-    // Clear localStorage tokens
-    clearTokensFromLocalStorage();
-    
-    // Note: This only clears client-side state, not server-side cookies
-    // For complete logout, use logout() or completeLogout()
-    document.cookie = 'fa_access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-    document.cookie = 'fa_refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-  }
-
-  /**
-   * Handle post-login token exchange for development
-   * Call this after being redirected back from login
-   */
-  async handlePostLoginTokenExchange(): Promise<boolean> {
-    if (!isDevelopmentCrossDomain) {
-      return false; // Not needed in production
-    }
-
+  async checkAuth(): Promise<User | null> {
     try {
-      console.log('🔄 Attempting to get tokens from API...');
-      
-      // Try to get tokens from the API (using cookies)
-      const response = await api.get('/api/v1/tokens');
-      const tokens = response.data;
-      
-      if (tokens.access_token && tokens.refresh_token) {
-        setTokensInLocalStorage(tokens.access_token, tokens.refresh_token);
-        console.log('✅ Tokens successfully retrieved and stored');
-        return true;
+      const response = await fetch(`${this.baseURL}/api/v1/me`, {
+        credentials: 'include', // Important: sends cookies
+      });
+
+      if (response.ok) {
+        const user = await response.json();
+        return user;
       }
-      
-      console.log('❌ No tokens received from API');
-      return false;
+      return null;
     } catch (error) {
-      console.log('❌ Failed to get tokens from API:', error);
-      return false;
+      console.log('Not authenticated');
+      return null;
     }
   }
+
+  /**
+   * ✨ SIMPLIFIED LOGOUT - Just redirect to backend
+   */
+  logout(redirectUri?: string): void {
+    const redirect = redirectUri || window.location.origin;
+    window.location.href = `${this.baseURL}/api/v1/logout?redirect_uri=${encodeURIComponent(redirect)}`;
+  }
+
+  /**
+   * 🧪 TEST: Get user info (same as checkAuth, but different endpoint)
+   * This uses the same cookie-based authentication
+   */
+  async getUserInfo(): Promise<User | null> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/v1/me`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        return await response.json();
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to get user info:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 🔧 OPTIONAL: Get OAuth URL for manual handling
+   * (Most apps won't need this - use login() instead)
+   */
+  async getOAuthUrl(redirectUri?: string): Promise<string> {
+    const redirect = redirectUri || window.location.origin;
+    const response = await fetch(
+      `${this.baseURL}/api/v1/oauth-url?redirect_uri=${encodeURIComponent(redirect)}`
+    );
+    const data = await response.json();
+    return data.oauth_url;
+  }
+
+  // Remove all the old localStorage token methods - not needed anymore!
+  // No more: storeTokens, getStoredTokens, clearTokens, etc.
 }
 
 // Export singleton instance

@@ -1,179 +1,288 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { authService } from '../services/api';
+
+interface DebugInfo {
+  allCookies: string;
+  cookieCount: number;
+  cookies: Array<{ name: string; value: string }>;
+  domain: string;
+  port: string;
+  protocol: string;
+  apiUrl: string | undefined;
+  hasFaCookies: boolean;
+}
 
 export function Dashboard() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [apiTest, setApiTest] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [tokenTest, setTokenTest] = useState<string>('');
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
 
-  const testApiEndpoint = async () => {
+  const testMeEndpoint = async () => {
     try {
       setLoading(true);
-      const userData = await authService.getCurrentUser();
-      setApiTest(`✅ API Test Successful! Retrieved user: ${userData.email}`);
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com';
+      
+      console.log('🔍 Testing /me endpoint...');
+      console.log('📍 API URL:', apiUrl);
+      console.log('🍪 All cookies:', document.cookie);
+      
+      const response = await fetch(`${apiUrl}/api/v1/me`, {
+        method: 'GET',
+        credentials: 'include', // This should send cookies cross-domain
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('✅ SUCCESS! User data:', userData);
+        setApiTest(`✅ SUCCESS! /me endpoint returned: ${JSON.stringify(userData, null, 2)}`);
+        
+        // Update the auth context
+        await refreshUser();
+      } else {
+        const errorText = await response.text();
+        console.log('❌ ERROR Response body:', errorText);
+        setApiTest(`❌ FAILED! /me endpoint returned: ${response.status} ${response.statusText}\nBody: ${errorText}`);
+      }
     } catch (error) {
-      setApiTest(`❌ API Test Failed: ${error}`);
+      console.error('❌ NETWORK ERROR:', error);
+      setApiTest(`❌ NETWORK ERROR! /me endpoint failed: ${error}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const testWithToken = async () => {
+  const debugCookies = () => {
+    const allCookies = document.cookie;
+    const cookieArray = allCookies.split('; ').map(cookie => {
+      const [name, value] = cookie.split('=');
+      return { name, value: value?.substring(0, 50) + '...' };
+    });
+    
+    setDebugInfo({
+      allCookies: allCookies,
+      cookieCount: cookieArray.length,
+      cookies: cookieArray,
+      domain: window.location.hostname,
+      port: window.location.port,
+      protocol: window.location.protocol,
+      apiUrl: import.meta.env.VITE_API_URL,
+      hasFaCookies: allCookies.includes('fa_access_token')
+    });
+  };
+
+  const testDirectApiCall = async () => {
     try {
       setLoading(true);
-      const token = prompt('Enter your access token for testing:');
-      if (!token) {
-        setTokenTest('❌ No token provided');
-        return;
-      }
       
-      const userData = await authService.getUserWithToken(token);
-      setTokenTest(`✅ Token Test Successful! Retrieved user: ${userData.email}`);
+      // Try direct API call to see what happens
+      const response = await fetch('https://auth-api.dev.controlshiftai.com/api/v1/me', {
+        method: 'GET',
+        credentials: 'include',
+        mode: 'cors',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setApiTest(`✅ DIRECT API SUCCESS: ${JSON.stringify(data, null, 2)}`);
+        // This should trigger AuthContext to update
+        await refreshUser();
+      } else {
+        const errorText = await response.text();
+        setApiTest(`❌ DIRECT API FAILED: ${response.status} ${response.statusText}\n${errorText}`);
+      }
     } catch (error) {
-      setTokenTest(`❌ Token Test Failed: ${error}`);
+      setApiTest(`❌ DIRECT API ERROR: ${error}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const navigate = (path: string) => {
+    window.history.pushState({}, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">
-          Protected Dashboard
-        </h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Welcome Section */}
-          <div className="bg-blue-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-blue-800 mb-3">
-              Welcome back!
-            </h3>
-            <p className="text-blue-700 mb-4">
-              Hello {user?.firstName || user?.email}! This is a protected page that only authenticated users can see.
-            </p>
-            <div className="text-sm text-blue-600">
-              <p>🔐 This content is protected by authentication</p>
-              <p>🍪 Using cookie-based authentication</p>
-              <p>🔄 Automatic token refresh</p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Dashboard - Debug Mode
+          </h1>
+          <p className="mt-2 text-lg text-gray-600">
+            Hello {user?.firstName || user?.email?.split('@')[0] || 'User'}! Let's debug the cookie/auth issue.
+          </p>
+        </div>
 
-          {/* API Test Section */}
-          <div className="bg-green-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-green-800 mb-3">
-              API Test
-            </h3>
-            <p className="text-green-700 mb-4">
-              Test the `/me` endpoint to verify your authentication is working.
-            </p>
-            <div className="space-y-3">
-              <button
-                onClick={testApiEndpoint}
-                disabled={loading}
-                className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white px-4 py-2 rounded font-medium transition-colors"
-              >
-                {loading ? 'Testing...' : 'Test Cookie Auth'}
-              </button>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Current User Info */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                👤 Current User Info (from AuthContext)
+              </h3>
+              {user ? (
+                <div className="bg-green-50 border rounded-lg p-4">
+                  <p className="text-green-800 font-medium mb-2">✅ User is authenticated in React!</p>
+                  <pre className="text-sm text-gray-800 overflow-auto">
+                    {JSON.stringify(user, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <div className="bg-red-50 border rounded-lg p-4">
+                  <p className="text-red-800 font-medium">❌ No user in AuthContext</p>
+                  <p className="text-red-600 text-sm">This means the /me call in AuthContext failed or cookies aren't accessible</p>
+                </div>
+              )}
+            </div>
+
+            {/* Debug Testing */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                🧪 Debug Authentication
+              </h3>
               
-              <button
-                onClick={testWithToken}
-                disabled={loading}
-                className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white px-4 py-2 rounded font-medium transition-colors"
-              >
-                {loading ? 'Testing...' : 'Test Token Auth'}
-              </button>
-            </div>
-            
-            {apiTest && (
-              <div className="text-sm bg-white p-3 rounded border mt-3">
-                <strong>Cookie Test:</strong><br/>
-                {apiTest}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <button
+                  onClick={debugCookies}
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-3 rounded-lg font-medium transition-colors"
+                >
+                  🍪 Debug Cookies
+                </button>
+                
+                <button
+                  onClick={testMeEndpoint}
+                  disabled={loading}
+                  className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center"
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  ) : (
+                    <span className="mr-2">📡</span>
+                  )}
+                  Test /me (with logs)
+                </button>
+                
+                <button
+                  onClick={testDirectApiCall}
+                  disabled={loading}
+                  className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center"
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  ) : (
+                    <span className="mr-2">🔗</span>
+                  )}
+                  Direct API Test
+                </button>
               </div>
-            )}
-            
-            {tokenTest && (
-              <div className="text-sm bg-white p-3 rounded border mt-3">
-                <strong>Token Test:</strong><br/>
-                {tokenTest}
+              
+              {apiTest && (
+                <div className="bg-gray-50 border rounded-lg p-4 mb-4">
+                  <p className="text-sm font-medium text-gray-700 mb-1">API Test Result:</p>
+                  <pre className="text-xs text-gray-600 font-mono whitespace-pre-wrap">{apiTest}</pre>
+                </div>
+              )}
+
+              {debugInfo && (
+                <div className="bg-blue-50 border rounded-lg p-4">
+                  <p className="text-sm font-medium text-blue-700 mb-2">🔍 Debug Information:</p>
+                  <pre className="text-xs text-blue-600 font-mono whitespace-pre-wrap">{JSON.stringify(debugInfo, null, 2)}</pre>
+                </div>
+              )}
+            </div>
+
+            {/* Instructions */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                📋 What We're Testing
+              </h3>
+              <div className="space-y-3 text-sm">
+                <div className="bg-yellow-50 p-3 rounded">
+                  <p className="font-medium text-yellow-800">🍪 Cookie Debug:</p>
+                  <p className="text-yellow-700">Check if React app can see cookies from auth-api.dev.controlshiftai.com</p>
+                </div>
+                <div className="bg-blue-50 p-3 rounded">
+                  <p className="font-medium text-blue-800">📡 /me Test:</p>
+                  <p className="text-blue-700">Test fetch to /me with credentials: 'include' (should send cookies)</p>
+                </div>
+                <div className="bg-purple-50 p-3 rounded">
+                  <p className="font-medium text-purple-800">🔗 Direct API:</p>
+                  <p className="text-purple-700">Direct call to confirm cookies work cross-domain</p>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Cross-Domain Info */}
-        <div className="mt-8 pt-6 border-t">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-yellow-800 mb-2">
-              🍪 Cross-Domain Cookie Note
-            </h3>
-            <p className="text-yellow-700 text-sm mb-2">
-              If you're getting 401 errors, it's likely due to cross-domain cookies.
-            </p>
-            <div className="text-sm text-yellow-600">
-              <p><strong>To test properly:</strong></p>
-              <ol className="list-decimal list-inside mt-1 space-y-1">
-                <li>Login via the main login button in navigation</li>
-                <li>Or use the "Test Token Auth" button above</li>
-                <li>Or deploy your React app to the same domain as the API</li>
-              </ol>
             </div>
           </div>
-        </div>
 
-        {/* Features Section */}
-        <div className="mt-8 pt-6 border-t">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">
-            Available Features
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="font-medium text-gray-800 mb-2">Cookie Authentication</h4>
-              <p className="text-sm text-gray-600">
-                Uses HTTPOnly cookies for secure authentication without manual token management.
-              </p>
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Expected Cookies */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                🍪 Expected Cookies
+              </h3>
+              <div className="space-y-2 text-xs">
+                <div className="bg-green-50 p-2 rounded">
+                  <p className="font-medium text-green-800">fa_access_token</p>
+                  <p className="text-green-600">Domain: auth-api.dev.controlshiftai.com</p>
+                </div>
+                <div className="bg-green-50 p-2 rounded">
+                  <p className="font-medium text-green-800">fa_refresh_token</p>
+                  <p className="text-green-600">Domain: auth-api.dev.controlshiftai.com</p>
+                </div>
+                <div className="bg-green-50 p-2 rounded">
+                  <p className="font-medium text-green-800">fa_id_token</p>
+                  <p className="text-green-600">Domain: auth-api.dev.controlshiftai.com</p>
+                </div>
+              </div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="font-medium text-gray-800 mb-2">Token Access</h4>
-              <p className="text-sm text-gray-600">
-                Get JWT tokens for localStorage storage or API authentication.
-              </p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="font-medium text-gray-800 mb-2">Automatic Refresh</h4>
-              <p className="text-sm text-gray-600">
-                Tokens are automatically refreshed behind the scenes.
-              </p>
-            </div>
-          </div>
-        </div>
 
-        {/* Quick Actions */}
-        <div className="mt-8 pt-6 border-t">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">
-            Quick Actions
-          </h3>
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => window.location.href = '/profile'}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded font-medium transition-colors"
-            >
-              View Profile
-            </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded font-medium transition-colors"
-            >
-              Refresh Page
-            </button>
-            <button
-              onClick={() => window.open('https://auth.dev.controlshiftai.com/', '_blank')}
-              className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded font-medium transition-colors"
-            >
-              Open FusionAuth
-            </button>
+            {/* The Issue */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                🚨 The Issue
+              </h3>
+              <div className="space-y-3 text-sm">
+                <div className="bg-red-50 p-3 rounded">
+                  <p className="font-medium text-red-800">Cross-Domain Problem:</p>
+                  <p className="text-red-700">React app (localhost:5173) can't read cookies from auth-api.dev.controlshiftai.com</p>
+                </div>
+                <div className="bg-blue-50 p-3 rounded">
+                  <p className="font-medium text-blue-800">But fetch() should work:</p>
+                  <p className="text-blue-700">credentials: 'include' should send cookies with API calls</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Quick Actions
+              </h3>
+              <div className="space-y-3">
+                <button
+                  onClick={() => navigate('/')}
+                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-medium transition-colors text-left"
+                >
+                  🏠 Back to Home
+                </button>
+                <button
+                  onClick={() => window.open('https://auth-api.dev.controlshiftai.com/api/v1/me', '_blank')}
+                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-medium transition-colors text-left"
+                >
+                  🔗 Open /me in New Tab
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
