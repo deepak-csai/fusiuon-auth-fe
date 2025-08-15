@@ -59,6 +59,38 @@ export function Dashboard() {
     }
   };
 
+  const testTokensEndpoint = async () => {
+    try {
+      setLoading(true);
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com';
+      
+      console.log('🔍 Testing /tokens endpoint...');
+      
+      const response = await fetch(`${apiUrl}/api/v1/tokens`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const tokens = await response.json();
+        console.log('✅ SUCCESS! Tokens:', tokens);
+        setApiTest(`✅ SUCCESS! /tokens endpoint returned: ${JSON.stringify(tokens, null, 2)}`);
+      } else {
+        const errorText = await response.text();
+        console.log('❌ ERROR Response body:', errorText);
+        setApiTest(`❌ FAILED! /tokens endpoint returned: ${response.status} ${response.statusText}\nBody: ${errorText}`);
+      }
+    } catch (error) {
+      console.error('❌ NETWORK ERROR:', error);
+      setApiTest(`❌ NETWORK ERROR! /tokens endpoint failed: ${error}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const debugCookies = () => {
     const allCookies = document.cookie;
     const cookieArray = allCookies.split('; ').map(cookie => {
@@ -116,11 +148,17 @@ export function Dashboard() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">
-            Dashboard - Token Testing 🔑
+            Dashboard - Multi-Tenant Auth Testing 🔑
           </h1>
           <p className="mt-2 text-lg text-gray-600">
-            Hello {user?.firstName || user?.email?.split('@')[0] || 'User'}! Test token access for your frontend team.
+            Hello {user?.firstName || user?.email?.split('@')[0] || 'User'}! Test the new multi-tenant authentication system.
           </p>
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>✨ New Multi-Tenant Features:</strong> Company detection from email, automatic tenant routing, 
+              and cross-domain cookie support.
+            </p>
+          </div>
         </div>
 
         {/* ✨ NEW: Token Test Component */}
@@ -152,7 +190,7 @@ export function Dashboard() {
             {/* Debug Testing */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                🧪 Legacy Debug (Cookies)
+                🧪 Multi-Tenant API Testing
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -173,9 +211,24 @@ export function Dashboard() {
                   ) : (
                     <span className="mr-2">📡</span>
                   )}
-                  Test /me (with logs)
+                  Test /me
                 </button>
                 
+                <button
+                  onClick={testTokensEndpoint}
+                  disabled={loading}
+                  className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center"
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  ) : (
+                    <span className="mr-2">🔑</span>
+                  )}
+                  Test /tokens
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <button
                   onClick={testDirectApiCall}
                   disabled={loading}
@@ -208,23 +261,52 @@ export function Dashboard() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Instructions */}
+            {/* Multi-Tenant Features */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                📋 Token Access Guide
+                🏢 Multi-Tenant Features
               </h3>
               <div className="space-y-3 text-sm">
-                <div className="bg-green-50 p-3 rounded">
-                  <p className="font-medium text-green-800">✅ NEW Way (localStorage):</p>
-                  <p className="text-green-700">Use FrontendAuth.getAccessToken() to get tokens from localStorage</p>
-                </div>
                 <div className="bg-blue-50 p-3 rounded">
-                  <p className="font-medium text-blue-800">🔄 Auto Token Exchange:</p>
-                  <p className="text-blue-700">Cookies automatically exchanged for localStorage tokens</p>
+                  <p className="font-medium text-blue-800">✅ Company Detection:</p>
+                  <p className="text-blue-700">Automatic tenant detection from email domain</p>
+                </div>
+                <div className="bg-green-50 p-3 rounded">
+                  <p className="font-medium text-green-800">🔄 Smart Routing:</p>
+                  <p className="text-green-700">Routes to company-specific FusionAuth instance</p>
                 </div>
                 <div className="bg-purple-50 p-3 rounded">
-                  <p className="font-medium text-purple-800">🎯 For Your Team:</p>
-                  <p className="text-purple-700">Simple token access without cross-domain issues</p>
+                  <p className="font-medium text-purple-800">🌐 Cross-Domain:</p>
+                  <p className="text-purple-700">Works across different domains with CORS support</p>
+                </div>
+                <div className="bg-yellow-50 p-3 rounded">
+                  <p className="font-medium text-yellow-800">🍪 Cookie-Based:</p>
+                  <p className="text-yellow-700">Secure HTTPOnly cookies for authentication</p>
+                </div>
+              </div>
+            </div>
+
+            {/* API Endpoints */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                📡 API Endpoints
+              </h3>
+              <div className="space-y-3 text-sm">
+                <div className="bg-gray-50 p-3 rounded">
+                  <p className="font-medium text-gray-800">POST /api/v1/login:</p>
+                  <p className="text-gray-700">Initiate multi-tenant login with email</p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded">
+                  <p className="font-medium text-gray-800">GET /api/v1/me:</p>
+                  <p className="text-gray-700">Get current user info (cookie-based)</p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded">
+                  <p className="font-medium text-gray-800">GET /api/v1/tokens:</p>
+                  <p className="text-gray-700">Exchange cookies for localStorage tokens</p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded">
+                  <p className="font-medium text-gray-800">POST /api/v1/refresh:</p>
+                  <p className="text-gray-700">Refresh access token</p>
                 </div>
               </div>
             </div>
@@ -246,6 +328,12 @@ export function Dashboard() {
                   className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-medium transition-colors text-left"
                 >
                   🔗 Open /me in New Tab
+                </button>
+                <button
+                  onClick={() => window.open('https://auth-api.dev.controlshiftai.com/docs', '_blank')}
+                  className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-3 rounded-lg font-medium transition-colors text-left"
+                >
+                  📚 View API Docs
                 </button>
               </div>
             </div>

@@ -20,27 +20,51 @@ export function Router() {
   // Debug page (only in development)
   const DebugPage = () => {
     const [testResults, setTestResults] = useState<string[]>([]);
+    const [email, setEmail] = useState('');
+    const [testLoading, setTestLoading] = useState(false);
     
     const addResult = (message: string) => {
       setTestResults(prev => [...prev, `${new Date().toLocaleTimeString()}: ${message}`]);
     };
 
-    const testSimpleLogin = async () => {
-      addResult("🔄 Starting simplified OAuth flow test...");
+    const testMultiTenantLogin = async () => {
+      if (!email.trim()) {
+        addResult("❌ Please enter an email address first");
+        return;
+      }
+
+      addResult("🔄 Testing multi-tenant login flow...");
+      setTestLoading(true);
       
       const apiUrl = import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com';
       const redirectUri = window.location.origin;
-      const loginUrl = `${apiUrl}/api/v1/login?redirect_uri=${encodeURIComponent(redirectUri)}`;
       
       addResult(`📍 API URL: ${apiUrl}`);
       addResult(`🏠 Redirect URI: ${redirectUri}`);
-      addResult(`🔗 Login URL: ${loginUrl}`);
-      addResult("🚀 Redirecting to login...");
+      addResult(`📧 Email: ${email}`);
       
-      // Wait a moment then redirect
-      setTimeout(() => {
-        window.location.href = loginUrl;
-      }, 1000);
+      try {
+        const response = await fetch(`${apiUrl}/api/v1/login?email=${encodeURIComponent(email)}&frontend_redirect_uri=${encodeURIComponent(redirectUri)}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          addResult(`✅ Company detected: ${data.company}`);
+          addResult(`🔗 Auth URL: ${data.auth_url}`);
+          addResult(`📝 Message: ${data.message}`);
+          addResult("🚀 Redirecting to FusionAuth in 3 seconds...");
+          
+          setTimeout(() => {
+            window.location.href = data.auth_url;
+          }, 3000);
+        } else {
+          const errorData = await response.json();
+          addResult(`❌ Login failed: ${response.status} - ${errorData.message || 'Unknown error'}`);
+        }
+      } catch (error) {
+        addResult(`❌ Network error: ${error}`);
+      } finally {
+        setTestLoading(false);
+      }
     };
 
     const testAPIEndpoints = async () => {
@@ -71,6 +95,40 @@ export function Router() {
       } catch (error) {
         addResult(`❌ /me endpoint error: ${error}`);
       }
+
+      try {
+        // Test /tokens endpoint
+        const tokensResponse = await fetch(`${apiUrl}/api/v1/tokens`, {
+          credentials: 'include'
+        });
+        addResult(`🔑 /tokens endpoint: ${tokensResponse.status}`);
+      } catch (error) {
+        addResult(`❌ /tokens endpoint error: ${error}`);
+      }
+    };
+
+    const testTokenExchange = async () => {
+      addResult("🔄 Testing token exchange...");
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com';
+      
+      try {
+        const response = await fetch(`${apiUrl}/api/v1/tokens`, {
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          const tokens = await response.json();
+          addResult(`✅ Token exchange successful!`);
+          addResult(`🔑 Access token: ${tokens.access_token ? 'Present' : 'Missing'}`);
+          addResult(`🔄 Refresh token: ${tokens.refresh_token ? 'Present' : 'Missing'}`);
+          addResult(`🆔 ID token: ${tokens.id_token ? 'Present' : 'Missing'}`);
+        } else {
+          const errorText = await response.text();
+          addResult(`❌ Token exchange failed: ${response.status} - ${errorText}`);
+        }
+      } catch (error) {
+        addResult(`❌ Token exchange error: ${error}`);
+      }
     };
 
     return (
@@ -79,7 +137,7 @@ export function Router() {
         <div className="max-w-4xl mx-auto p-6">
           <div className="bg-white rounded-lg shadow-md p-6">
             <h1 className="text-2xl font-bold text-gray-800 mb-6">
-              🔍 OAuth Flow Debug
+              🔍 Multi-Tenant OAuth Flow Debug
             </h1>
             
             <div className="space-y-6">
@@ -90,6 +148,32 @@ export function Router() {
                   <div><strong>URL:</strong> {window.location.href}</div>
                   <div><strong>API URL:</strong> {import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com'}</div>
                   <div><strong>Environment:</strong> {import.meta.env.MODE}</div>
+                </div>
+              </div>
+
+              {/* Multi-Tenant Login Test */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">Multi-Tenant Login Test</h3>
+                <div className="bg-blue-50 p-4 rounded">
+                  <div className="flex space-x-3 mb-3">
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="user@company.com"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={testMultiTenantLogin}
+                      disabled={testLoading || !email.trim()}
+                      className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium"
+                    >
+                      {testLoading ? 'Testing...' : 'Test Login'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-700">
+                    Enter an email to test the multi-tenant login flow. The system will detect the company and redirect to the appropriate FusionAuth instance.
+                  </p>
                 </div>
               </div>
 
@@ -116,46 +200,17 @@ export function Router() {
                 <h3 className="text-lg font-semibold text-gray-700 mb-2">Test Actions</h3>
                 <div className="flex flex-wrap gap-3 mb-4">
                   <button
-                    onClick={testSimpleLogin}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded font-medium"
-                  >
-                    🔄 Test Simple Login
-                  </button>
-                  
-                  <button
                     onClick={testAPIEndpoints}
                     className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded font-medium"
                   >
-                    📡 Test /me Endpoint
+                    📡 Test API Endpoints
                   </button>
                   
                   <button
-                    onClick={() => {
-                      // Test the exact login URL being generated
-                      const apiUrl = import.meta.env.VITE_API_URL || 'https://auth-api.dev.controlshiftai.com';
-                      const redirectUri = window.location.origin;
-                      const loginUrl = `${apiUrl}/api/v1/login?redirect_uri=${encodeURIComponent(redirectUri)}`;
-                      addResult(`🔗 Login URL: ${loginUrl}`);
-                      addResult(`🌐 Opening login URL in new tab to check Google login...`);
-                      window.open(loginUrl, '_blank');
-                    }}
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-medium"
-                  >
-                    🌐 Test Login URL (New Tab)
-                  </button>
-                  
-                  <button
-                    onClick={() => {
-                      // Check DevTools cookies specifically
-                      addResult("🔍 Checking cookies in DevTools...");
-                      addResult("📍 Open DevTools → Application → Cookies");
-                      addResult("📍 Look for domain: auth-api.dev.controlshiftai.com");
-                      addResult("📍 Expected cookies: fa_access_token, fa_refresh_token, fa_id_token");
-                      addResult("⚠️  Note: HTTPOnly cookies won't show in document.cookie (security feature)");
-                    }}
+                    onClick={testTokenExchange}
                     className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded font-medium"
                   >
-                    🔍 Cookie Debug Guide
+                    🔑 Test Token Exchange
                   </button>
                   
                   <button
@@ -191,23 +246,27 @@ export function Router() {
 
               {/* Expected Flow */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">✨ Simplified OAuth Flow</h3>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">✨ Multi-Tenant OAuth Flow</h3>
                 <div className="bg-green-50 p-4 rounded text-sm">
                   <ol className="list-decimal list-inside space-y-2">
-                    <li>React app redirects to <code>https://auth-api.dev.controlshiftai.com/api/v1/login</code></li>
-                    <li>API redirects to FusionAuth with PKCE challenge + proper scopes</li>
-                    <li>User completes login at FusionAuth</li>
-                    <li>FusionAuth redirects back to <code>https://auth-api.dev.controlshiftai.com/api/v1/oauth-redirect</code></li>
-                    <li>API exchanges code for tokens (access, refresh, ID) and sets HTTPOnly cookies</li>
-                    <li>API redirects back to React app</li>
+                    <li>User enters email in React app</li>
+                    <li>React app calls <code>POST /api/v1/login?email=user@company.com</code></li>
+                    <li>Backend detects company from email domain</li>
+                    <li>Backend returns <code>auth_url</code> for company's FusionAuth instance</li>
+                    <li>React app redirects to <code>auth_url</code></li>
+                    <li>User completes OAuth login at FusionAuth</li>
+                    <li>FusionAuth redirects back to backend <code>/api/v1/oauth-redirect</code></li>
+                    <li>Backend exchanges code for tokens and sets HTTPOnly cookies</li>
+                    <li>Backend redirects back to React app</li>
                     <li>React app calls <code>/api/v1/me</code> with cookies and shows authenticated state</li>
                   </ol>
                   <div className="mt-3 pt-3 border-t">
                     <p className="font-medium text-green-800">✅ What's New:</p>
                     <ul className="list-disc list-inside mt-1 text-green-700">
-                      <li>Single login endpoint: <code>/login</code></li>
-                      <li>No localStorage token management needed</li>
-                      <li>Multi-provider ready (Google, LinkedIn, etc.)</li>
+                      <li>Multi-tenant support with automatic company detection</li>
+                      <li>Email-first login flow</li>
+                      <li>Company-specific FusionAuth instances</li>
+                      <li>Cross-domain cookie support</li>
                     </ul>
                   </div>
                 </div>

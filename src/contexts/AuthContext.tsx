@@ -6,7 +6,9 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (redirectUri?: string) => void;
+  // ✨ NEW: Multi-tenant login flow
+  initiateLogin: (email: string, redirectUri?: string) => Promise<void>;
+  login: (authUrl: string) => void;
   logout: (redirectUri?: string) => void;
   refreshUser: () => Promise<void>;
   // ✨ NEW: Token access for frontend teams
@@ -45,9 +47,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // ✨ Login with automatic token initialization
-  const login = (redirectUri?: string) => {
-    authService.login(redirectUri);
+  // ✨ NEW: Multi-tenant login initiation
+  const initiateLogin = async (email: string, redirectUri?: string) => {
+    try {
+      console.log(`🔄 Initiating login for email: ${email}`);
+      const loginData = await authService.initiateLogin(email, redirectUri);
+      
+      if (loginData.success && loginData.auth_url) {
+        console.log(`✅ Tenant detected: ${loginData.company}`);
+        console.log(`🚀 Redirecting to FusionAuth...`);
+        // Redirect to FusionAuth login
+        window.location.href = loginData.auth_url;
+      } else {
+        throw new Error(loginData.message || 'Login initiation failed');
+      }
+    } catch (error) {
+      console.error('❌ Login initiation failed:', error);
+      throw error;
+    }
+  };
+
+  // ✨ Login with automatic token initialization (after tenant detection)
+  const login = (authUrl: string) => {
+    authService.login(authUrl);
   };
 
   // ✨ Logout with token cleanup
@@ -107,6 +129,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     user,
     isLoading,
     isAuthenticated: !!user,
+    // ✨ NEW: Multi-tenant login methods
+    initiateLogin,
     login,
     logout,
     refreshUser,

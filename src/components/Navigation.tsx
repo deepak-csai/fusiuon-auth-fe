@@ -1,10 +1,27 @@
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 export function Navigation() {
-  const { user, isAuthenticated, isLoading, login, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, initiateLogin, logout } = useAuth();
+  const [showLoginForm, setShowLoginForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
-  const handleLogin = () => {
-    login(window.location.origin);
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+
+    setLoginLoading(true);
+    setLoginError('');
+
+    try {
+      await initiateLogin(email.trim());
+      // The initiateLogin will redirect to FusionAuth, so we won't reach here
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : 'Login failed');
+      setLoginLoading(false);
+    }
   };
 
   const handleLogout = () => {
@@ -104,17 +121,68 @@ export function Navigation() {
               </div>
             ) : (
               <div className="flex items-center space-x-3">
-                {/* Sign In Button */}
-                <button
-                  onClick={handleLogin}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors"
-                >
-                  Sign In
-                </button>
+                {/* ✨ NEW: Multi-tenant Login Form */}
+                {showLoginForm ? (
+                  <form onSubmit={handleLoginSubmit} className="flex items-center space-x-2">
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Enter your email"
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={loginLoading}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      disabled={loginLoading || !email.trim()}
+                      className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center"
+                    >
+                      {loginLoading ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      ) : (
+                        <span className="mr-2">🚀</span>
+                      )}
+                      {loginLoading ? 'Detecting...' : 'Login'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowLoginForm(false);
+                        setEmail('');
+                        setLoginError('');
+                      }}
+                      className="text-gray-500 hover:text-gray-700 px-2 py-2 text-sm"
+                    >
+                      ✕
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    onClick={() => setShowLoginForm(true)}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors"
+                  >
+                    Sign In
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
+
+        {/* ✨ NEW: Login Error Display */}
+        {loginError && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-red-400">⚠️</span>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{loginError}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mobile Navigation */}
         <div className="md:hidden">

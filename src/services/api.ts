@@ -174,7 +174,7 @@ export interface User {
   email_verified?: boolean;
 }
 
-// ✨ UPDATED: Auth Service for frontend teams
+// ✨ UPDATED: Multi-tenant Auth Service for frontend teams
 export class AuthService {
   private baseURL: string;
 
@@ -183,11 +183,45 @@ export class AuthService {
   }
 
   /**
-   * ✨ LOGIN: Redirect to backend login
+   * ✨ MULTI-TENANT LOGIN: First step - detect tenant from email
    */
-  login(redirectUri?: string): void {
-    const redirect = redirectUri || window.location.origin;
-    window.location.href = `${this.baseURL}/api/v1/login?redirect_uri=${encodeURIComponent(redirect)}`;
+  async initiateLogin(email: string, redirectUri?: string): Promise<{ success: boolean; auth_url?: string; company?: string; message?: string }> {
+    try {
+      const redirect = redirectUri || window.location.origin;
+      
+      // ✅ CORRECT: Use POST method with query parameters
+      const response = await fetch(`${this.baseURL}/api/v1/login?email=${encodeURIComponent(email)}&frontend_redirect_uri=${encodeURIComponent(redirect)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          console.log(`✅ Redirecting to ${data.company} login...`);
+          return data;
+        } else {
+          throw new Error(data.message || 'Login failed');
+        }
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Login failed: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('❌ Login initiation failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * ✨ LOGIN: Redirect to FusionAuth (after tenant detection)
+   */
+  login(authUrl: string): void {
+    console.log('🚀 Redirecting to FusionAuth login...');
+    window.location.href = authUrl;
   }
 
   /**
@@ -269,6 +303,33 @@ export class AuthService {
       }
     });
   }
+
+  /**
+   * ✨ REFRESH TOKEN: Get new access token using refresh token
+   */
+  async refreshToken(): Promise<boolean> {
+    try {
+      const tokens = TokenManager.getTokens();
+      if (!tokens.refreshToken) {
+        return false;
+      }
+
+      const response = await fetch(`${this.baseURL}/api/v1/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: tokens.refreshToken })
+      });
+
+      if (response.ok) {
+        const newTokens = await response.json();
+        TokenManager.setTokens(newTokens);
+        return true;
+      }
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+    }
+    return false;
+  }
 }
 
 // Export singleton instance
@@ -291,8 +352,11 @@ export const FrontendAuth = {
   // Get user info (with expiry check)
   getUserInfo: () => TokenManager.getUserInfoFromToken(),
   
-  // Login
-  login: () => authService.login(),
+  // Multi-tenant login initiation
+  initiateLogin: (email: string) => authService.initiateLogin(email),
+  
+  // Login (after tenant detection)
+  login: (authUrl: string) => authService.login(authUrl),
   
   // Logout with cleanup
   logout: () => {
